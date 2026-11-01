@@ -129,6 +129,7 @@ internal static class Program
             TestSealedSliders();
             TestSpeedrun();
             TestPresetManagement();
+            TestStartOrder();
             TestUltimateStarter();
             TestDill();
             TestHeadstart();
@@ -941,6 +942,66 @@ internal static class Program
         var readyCalls = PatchProcessor.GetCurrentInstructions(removeReady!).Select(instruction => instruction.operand).OfType<MethodInfo>().ToArray();
         Check(readyCalls.Any(method => method.Name == "ConnectSignals") && !readyCalls.Any(method => method.Name == "_Ready"),
             "Preset remove button initializes hover, mouse and controller signals without calling native Ready");
+    }
+
+    private static void TestStartOrder()
+    {
+        var colorless = ModelDb.Modifier<ColorlessCards>().ToMutable();
+        var draft = ModelDb.Modifier<Draft>().ToMutable();
+        var specialized = ModelDb.Modifier<Specialized>().ToMutable();
+        var hoarder = ModelDb.Modifier<Hoarder>().ToMutable();
+        var twentyTwentyDraft = ModelDb.Modifier<TwentyTwentyDraft>().ToMutable();
+        var headstart = ModelDb.Modifier<Headstart>().ToMutable();
+        List<ModifierModel> Native() => [colorless, draft, specialized, hoarder, twentyTwentyDraft];
+
+        Check(StartOrder.IsOrderable(draft) && StartOrder.IsOrderable(specialized) && StartOrder.IsOrderable(twentyTwentyDraft) &&
+            StartOrder.IsOrderable(headstart) && StartOrder.IsOrderable(ModelDb.Modifier<SpecializedPickAny>()),
+            "Start bonuses with a Neow step are orderable, including inherited variant steps");
+        Check(!StartOrder.IsOrderable(colorless) && !StartOrder.IsOrderable(hoarder) &&
+            !StartOrder.IsOrderable(ModelDb.Modifier<NeowStarterChoice>()) && !StartOrder.IsOrderable(ModelDb.Modifier<MysteryEvents>()),
+            "Card pool, ordinary and non-Neow start modifiers are not orderable");
+        Check(StartOrder.KeyOf(ModelDb.Modifier<TwentyTwentyAny>()) == typeof(TwentyTwenty) &&
+            StartOrder.KeyOf(ModelDb.Modifier<SpecializedDraft>()) == typeof(Specialized) &&
+            StartOrder.KeyOf(draft) == typeof(Draft), "Variants share their family's order slot");
+
+        var state = new StartOrderState();
+        var untouched = Native();
+        StartOrder.Apply(state, untouched);
+        Check(untouched.SequenceEqual(Native()) && !state.Customized, "Without a chosen order the native list order is unchanged");
+
+        Check(StartOrder.Move(state, typeof(TwentyTwenty), -1) && StartOrder.Move(state, typeof(TwentyTwenty), -1) &&
+            !StartOrder.Move(state, typeof(TwentyTwenty), -1) && !StartOrder.Move(state, typeof(Hoarder), 1),
+            "Moves stop at the ends and ignore modifiers outside the order");
+        var moved = Native();
+        StartOrder.Apply(state, moved);
+        Check(moved.SequenceEqual(new ModifierModel[] { colorless, twentyTwentyDraft, draft, hoarder, specialized }),
+            "Chosen order fills only the start bonus slots; Colorless stays first and Hoarder keeps its place");
+
+        var twentyTwentyAny = ModelDb.Modifier<TwentyTwentyAny>().ToMutable();
+        var switched = new List<ModifierModel> { colorless, draft, specialized, hoarder, twentyTwentyAny };
+        StartOrder.Apply(state, switched);
+        Check(switched[1] == twentyTwentyAny, "Switching a variant keeps its position in the order");
+
+        var added = new List<ModifierModel> { colorless, draft, specialized, hoarder, twentyTwentyDraft, headstart };
+        StartOrder.Apply(state, added);
+        Check(added.Last() == headstart && added[1] == twentyTwentyDraft, "A newly ticked bonus runs last in a chosen order");
+
+        StartOrder.Move(state, typeof(TwentyTwenty), 1);
+        StartOrder.Move(state, typeof(TwentyTwenty), 1);
+        var restored = Native();
+        StartOrder.Apply(state, restored);
+        Check(restored.SequenceEqual(Native()) && !state.Customized, "Moving back to the native order clears the custom order");
+
+        var incoming = new StartOrderState();
+        StartOrder.ApplyIncoming(incoming, [hoarder, specialized, twentyTwentyDraft, colorless, draft]);
+        var synced = Native();
+        StartOrder.Apply(incoming, synced);
+        Check(synced.SequenceEqual(new ModifierModel[] { colorless, specialized, twentyTwentyDraft, hoarder, draft }),
+            "Presets, host syncs and loaded saves restore the order of their modifier list");
+        var legacy = new StartOrderState();
+        StartOrder.ApplyIncoming(legacy, Native());
+        StartOrder.Apply(legacy, Native());
+        Check(!legacy.Customized, "Presets saved in the native order stay uncustomized");
     }
 
     private static void TestUltimateStarter()

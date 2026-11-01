@@ -198,6 +198,7 @@ internal static class ModifierGroupsUi
                 if (CustomRunParametersUi.Create(list, row) is { } parameterRows)
                     childList.AddChild(parameterRows);
             }
+            if (group == ModifierGroup.ImprovedStart) childList.AddChild(StartOrderUi.Create(list));
             if (variantRows.Count > 0) ModifierVariantUi.InitializeChoices(list);
             LinkedModifierChains.Attach(body, visibleRows);
             var section = new Section
@@ -332,6 +333,7 @@ internal static class ModifierGroupsUi
                 if (nested.IsVisibleInTree() && nested.FocusMode == Control.FocusModeEnum.All) yield return nested;
             foreach (var slider in child.FindChildren("*", "Range", true, false).OfType<Control>())
                 if (slider.FocusMode == Control.FocusModeEnum.All) yield return slider;
+            foreach (var button in StartOrderUi.FocusableControls(child)) yield return button;
         }
     }
 }
