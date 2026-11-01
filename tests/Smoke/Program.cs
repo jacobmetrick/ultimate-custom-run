@@ -129,6 +129,7 @@ internal static class Program
             TestSealedSliders();
             TestSpeedrun();
             TestPresetManagement();
+            TestHandpicked();
             TestUltimateStarter();
             TestDill();
             TestHeadstart();
@@ -174,7 +175,7 @@ internal static class Program
             typeof(TwentyTwenty), typeof(TwentyTwentyDraft), typeof(TwentyTwentyAny),
             typeof(MegaCrit.Sts2.Core.Models.Enchantments.Clone), typeof(MegaCrit.Sts2.Core.Models.Relics.PaelsGrowth), typeof(PommelStrike),
             typeof(Friendship), typeof(FriendshipDraft), typeof(RichLoot), typeof(CardSwarm), typeof(CustomRunParameters),
-            typeof(SuperDraft), typeof(MustHave), typeof(Speedrun), typeof(UltimateStarter), typeof(Dill), typeof(Headstart), typeof(MysteryEvents), typeof(DoubleTrouble), typeof(CampfiresBetweenBosses),
+            typeof(SuperDraft), typeof(Handpicked), typeof(MustHave), typeof(Speedrun), typeof(UltimateStarter), typeof(Dill), typeof(Headstart), typeof(MysteryEvents), typeof(DoubleTrouble), typeof(CampfiresBetweenBosses),
             .. typeof(ActModel).Assembly.GetTypes().Where(type => type.IsSubclassOf(typeof(ActModel)) && !type.IsAbstract),
             typeof(MegaCrit.Sts2.Core.Models.Encounters.VantomBoss),
             typeof(MegaCrit.Sts2.Core.Models.Encounters.CeremonialBeastBoss),
@@ -336,6 +337,7 @@ internal static class Program
             (ModelDb.Modifier<Draft>(), 5, 20, 5, 10),
             (ModelDb.Modifier<SealedDeck>(), 5, 25, 5, 10),
             (ModelDb.Modifier<Insanity>(), 5, 60, 5, 30),
+            (ModelDb.Modifier<Handpicked>(), 5, 60, 5, 10),
             (ModelDb.Modifier<Hoarder>(), 1, 5, 1, 2),
             (ModelDb.Modifier<Midas>(), 150, 300, 5, 200),
             (ModelDb.Modifier<RichLoot>(), 1, 3, 1, 1),
@@ -486,7 +488,8 @@ internal static class Program
         Check(start.Take(3).Select(modifier => modifier.GetType()).SequenceEqual(new[] { typeof(Draft), typeof(SealedDeck), typeof(Insanity) }),
             "Draft, Sealed Deck and Insanity are adjacent for their shared chain");
         var linked = Enumerable.Range(1, start.Length - 1).Where(index => LinkedModifierChains.AreLinked(start[index - 1], start[index])).ToArray();
-        Check(linked.Length == 8, "Eight adjacent mutually exclusive pairs receive chains");
+        Check(linked.Length == 9, "Nine adjacent mutually exclusive pairs receive chains");
+        Check(start[3] is Handpicked && LinkedModifierChains.AreLinked(start[2], start[3]), "Handpicked joins the deck replacement chain after Insanity");
         Check(LinkedModifierChains.AreLinked(ModelDb.Modifier<Draft>(), ModelDb.Modifier<SealedDeck>()) &&
             LinkedModifierChains.AreLinked(ModelDb.Modifier<SealedDeck>(), ModelDb.Modifier<Insanity>()), "Native deck replacement choices are linked");
         Check(LinkedModifierChains.AreLinked(ModelDb.Modifier<Specialized>(), ModelDb.Modifier<SpecializedDraft>()) &&
@@ -941,6 +944,50 @@ internal static class Program
         var readyCalls = PatchProcessor.GetCurrentInstructions(removeReady!).Select(instruction => instruction.operand).OfType<MethodInfo>().ToArray();
         Check(readyCalls.Any(method => method.Name == "ConnectSignals") && !readyCalls.Any(method => method.Name == "_Ready"),
             "Preset remove button initializes hover, mouse and controller signals without calling native Ready");
+    }
+
+    private static void TestHandpicked()
+    {
+        var model = ModelDb.Modifier<Handpicked>();
+        var custom = ModifierListPatch.ForCustomRun(ModifierListPatch.ForCustomRun(ModelDb.GoodModifiers));
+        Check(custom.Count(modifier => modifier is Handpicked) == 1 && ModifierListPatch.IsCustomOnly(model) &&
+            ModifierGroups.Classify(model, new HashSet<Type>()) == ModifierGroup.ImprovedStart,
+            "Handpicked is custom-only, appears once and belongs to Improved Start");
+        Check(model.ClearsPlayerDeck && model.GenerateNeowOption((Neow)RuntimeHelpers.GetUninitializedObject(typeof(Neow))) == null,
+            "Handpicked replaces the starting deck and needs an owning player for its Neow step");
+        foreach (var other in new ModifierModel[] { ModelDb.Modifier<Draft>(), ModelDb.Modifier<SealedDeck>(), ModelDb.Modifier<Insanity>() })
+            Check(SpecializedExclusivityPatch.ShouldUntick(model, other) && SpecializedExclusivityPatch.ShouldUntick(other, model),
+                "Handpicked and " + other.GetType().Name + " are mutually exclusive");
+        Check(!SpecializedExclusivityPatch.ShouldUntick(model, ModelDb.Modifier<Specialized>()) &&
+            !SpecializedExclusivityPatch.ShouldUntick(model, ModelDb.Modifier<SuperDraft>()),
+            "Handpicked stays compatible with modifiers that add cards to the deck");
+        // ModifierValues.WithValue swaps the default count in [blue] tags for the slider value.
+        Check(Handpicked.DisplayDescription.Contains($"[blue]{ModifierValues.For(model)!.Default}[/blue]"),
+            "Handpicked description exposes its default card count for the slider text");
+
+        var selection = new HandpickedSelection(3, 4);
+        Check(selection.Add(2) && selection.Add(2) && selection.Add(0) && !selection.Add(1) && selection.IsComplete,
+            "Selections take copies of one card and stop at the chosen count");
+        Check(selection.CopiesOf(2) == 2 && selection.ToIndexes().SequenceEqual(new[] { 0, 2, 2 }),
+            "Copies are synchronized as repeated candidate indexes");
+        Check(selection.Remove(2) && !selection.Remove(1) && !selection.IsComplete && selection.Add(1) && selection.IsComplete,
+            "Removing a copy reopens the selection and unpicked cards cannot be removed");
+        HandpickedSelection.Validate([0, 0, 3], 3, 4);
+        foreach (var invalid in new[] { new[] { 0, 1 }, new[] { 0, 1, 4 }, new[] { -1, 0, 1 } })
+        {
+            try { HandpickedSelection.Validate(invalid, 3, 4); throw new Exception("Expected invalid Handpicked selection rejection"); }
+            catch (InvalidOperationException) { }
+        }
+        Check(true, "Synchronized selections must match the count and candidate range");
+
+        var registered = ModelDb.All.OfType<CardModel>().Where(card => card.MultiplayerConstraint == CardMultiplayerConstraint.None).ToList();
+        var pool = registered.Concat(registered).Reverse().ToList();
+        var filtered = Handpicked.FilterCandidates(pool, multiplayer: false);
+        Check(registered.Any(card => card.Rarity == CardRarity.Basic) && filtered.Count > 0 &&
+            filtered.All(card => card.Rarity is CardRarity.Common or CardRarity.Uncommon or CardRarity.Rare) &&
+            filtered.DistinctBy(card => card.Id).Count() == filtered.Count &&
+            filtered.Select(card => card.Rarity).SequenceEqual(filtered.Select(card => card.Rarity).Order()),
+            "Candidates are unique Common, Uncommon and Rare cards in stable rarity order");
     }
 
     private static void TestUltimateStarter()
