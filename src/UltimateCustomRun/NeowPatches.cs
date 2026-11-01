@@ -15,7 +15,7 @@ namespace UltimateCustomRun;
 internal static class ModifierListPatch
 {
     internal static bool IsCustomOnly(ModifierModel modifier) =>
-        modifier is TwentyTwentyModifier or AscensionModifier or NeowStarterChoice or SpecializedPickAny or SpecializedDraft or AllStarDraft or Friendship or FriendshipDraft or ColorlessCards or RichLoot or CardSwarm or CustomRunParameters or SuperDraft or MustHave or Speedrun or UltimateStarter or Dill or Headstart or MysteryEvents or DoubleTrouble or BlitzMerchantModifier or SubmodifierModel or SharedGold or CoopHandicap;
+        modifier is TwentyTwentyModifier or AscensionModifier or NeowStarterChoice or SpecializedPickAny or SpecializedDraft or AllStarDraft or Friendship or FriendshipDraft or ColorlessCards or RichLoot or CardSwarm or CustomRunParameters or SuperDraft or Handpicked or MustHave or Speedrun or UltimateStarter or Dill or Headstart or MysteryEvents or DoubleTrouble or BlitzMerchantModifier or SubmodifierModel or SharedGold or CoopHandicap;
 
     internal static IReadOnlyList<ModifierModel> ForCustomRun(IEnumerable<ModifierModel> source)
     {
@@ -39,7 +39,8 @@ internal static class ModifierListPatch
         ordered.AddRange([ModelDb.Modifier<BlitzMerchant>().ToMutable(), ModelDb.Modifier<BlitzMerchantRandom>().ToMutable()]);
         var startIndex = ordered.FindIndex(modifier => modifier is MegaCrit.Sts2.Core.Models.Modifiers.Insanity);
         ordered.InsertRange(startIndex < 0 ? ordered.Count : startIndex + 1,
-            [ModelDb.Modifier<UltimateStarter>().ToMutable(), ModelDb.Modifier<SuperDraft>().ToMutable()]);
+            // Handpicked follows Insanity so the deck-replacement choices share one chain.
+            [ModelDb.Modifier<Handpicked>().ToMutable(), ModelDb.Modifier<UltimateStarter>().ToMutable(), ModelDb.Modifier<SuperDraft>().ToMutable()]);
         ordered.Add(ModelDb.Modifier<MustHave>().ToMutable());
         ordered.Add(ModelDb.Modifier<Speedrun>().ToMutable());
         ordered.Add(ModelDb.Modifier<Dill>().ToMutable());
@@ -96,6 +97,8 @@ internal static class ModifierTextPatch
             [ModelDb.GetId<BlitzMerchantRandom>().Entry + ".description"] = BlitzMerchantRandom.DisplayDescription,
             [ModelDb.GetId<SuperDraft>().Entry + ".title"] = SuperDraft.DisplayTitle,
             [ModelDb.GetId<SuperDraft>().Entry + ".description"] = SuperDraft.DisplayDescription,
+            [ModelDb.GetId<Handpicked>().Entry + ".title"] = Handpicked.DisplayTitle,
+            [ModelDb.GetId<Handpicked>().Entry + ".description"] = Handpicked.DisplayDescription,
             [ModelDb.GetId<UltimateStarter>().Entry + ".title"] = UltimateStarter.DisplayTitle,
             [ModelDb.GetId<UltimateStarter>().Entry + ".description"] = UltimateStarter.DisplayDescription,
             [ModelDb.GetId<MustHave>().Entry + ".title"] = MustHave.DisplayTitle,
@@ -155,7 +158,13 @@ internal static class SpecializedExclusivityPatch
             (IsAllStar(selected) && IsAllStar(other)) ||
             (IsFriendship(selected) && IsFriendship(other)) ||
             (selected is TwentyTwentyModifier && other is TwentyTwentyModifier) ||
-            (selected is BlitzMerchantModifier && other is BlitzMerchantModifier));
+            (selected is BlitzMerchantModifier && other is BlitzMerchantModifier) ||
+            (IsDeckReplacement(selected) && IsDeckReplacement(other)));
+
+    // Native Draft, Sealed Deck and Insanity are already exclusive; Handpicked joins their set.
+    private static bool IsDeckReplacement(ModifierModel modifier) =>
+        modifier is Handpicked or MegaCrit.Sts2.Core.Models.Modifiers.Draft or
+            MegaCrit.Sts2.Core.Models.Modifiers.SealedDeck or MegaCrit.Sts2.Core.Models.Modifiers.Insanity;
 
     private static bool IsSpecialized(ModifierModel modifier) =>
         modifier is MegaCrit.Sts2.Core.Models.Modifiers.Specialized or SpecializedPickAny or SpecializedDraft;
