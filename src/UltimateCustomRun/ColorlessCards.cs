@@ -9,7 +9,8 @@ namespace UltimateCustomRun;
 
 public sealed class ColorlessCards : ModifierModel
 {
-    internal const string DisplayTitle = "[gold]Colorless[/gold] Cards";
+    // Titles stay plain text: the top bar's hover tip does not render BBCode.
+    internal const string DisplayTitle = "Colorless Cards";
     internal const string DisplayDescription = "[gold]Colorless[/gold] cards can appear in card rewards.";
     protected override string IconPath => ImageHelper.GetImagePath("packed/modifiers/character_cards.png");
 

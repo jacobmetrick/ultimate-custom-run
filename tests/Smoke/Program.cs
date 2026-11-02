@@ -477,6 +477,12 @@ internal static class Program
         Check(patches == null || !patches.Owners.Contains(ModEntry.HarmonyId), "Relic availability is not patched");
         Check(!ColorlessCards.DisplayDescription.Contains("Dingy", StringComparison.OrdinalIgnoreCase),
             "Public description only describes colorless rewards");
+        // The top bar's modifier hover tip shows titles as plain text, so markup would appear literally.
+        var titles = typeof(ModEntry).Assembly.GetTypes()
+            .Select(type => type.GetField("DisplayTitle", BindingFlags.NonPublic | BindingFlags.Static))
+            .Where(field => field is { IsLiteral: true }).Select(field => (string)field!.GetRawConstantValue()!).ToArray();
+        Check(titles.Length > 10 && titles.All(title => !title.Contains('[')),
+            "Modifier titles contain no BBCode markup");
     }
 
     private static void TestRadioChains()
