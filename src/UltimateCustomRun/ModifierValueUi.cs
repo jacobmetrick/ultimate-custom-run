@@ -175,6 +175,7 @@ internal static class ModifierValueUi
             finally { row.Applying = false; }
         }
         CustomRunParametersUi.Refresh(list);
+        StartOrderUi.Refresh(list);
         ModifierGroupsUi.Refresh(list);
     }
 
