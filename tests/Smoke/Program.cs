@@ -1649,6 +1649,16 @@ internal static class Program
                 typeof(MegaCrit.Sts2.Core.Entities.Creatures.Creature)), ref hpLossDamage);
         Check(hpLossDamage == 3m,
             "Source-less event damage (Tablet of Truth max-HP loss) neither crashes nor receives enemy scaling");
+        // Necrobinder card previews use Osty (a player-side monster) as dealer with no target.
+        var osty = (MegaCrit.Sts2.Core.Entities.Creatures.Creature)RuntimeHelpers.GetUninitializedObject(
+            typeof(MegaCrit.Sts2.Core.Entities.Creatures.Creature));
+        var monsterType = typeof(MonsterModel).Assembly.GetTypes().First(type => !type.IsAbstract && typeof(MonsterModel).IsAssignableFrom(type));
+        AccessTools.Field(osty.GetType(), "<Monster>k__BackingField").SetValue(osty, RuntimeHelpers.GetUninitializedObject(monsterType));
+        AccessTools.Field(osty.GetType(), "<Side>k__BackingField").SetValue(osty, MegaCrit.Sts2.Core.Combat.CombatSide.Player);
+        var previewDamage = 7m;
+        CustomRunEnemyDamagePatch.Postfix(null!, osty, null, ref previewDamage);
+        Check(osty.IsMonster && previewDamage == 7m,
+            "Target-less card previews dealt by Osty neither crash nor receive enemy scaling");
 
         var tablet = ModelDb.Event<TabletOfTruth>();
         var aroma = ModelDb.Event<AromaOfChaos>();
