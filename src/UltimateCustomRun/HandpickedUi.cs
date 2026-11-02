@@ -21,6 +21,8 @@ internal static class HandpickedUi
     {
         internal required IReadOnlyList<CardModel> Cards;
         internal required HandpickedSelection Selection;
+        // Grid holders are pooled and reused by other card grids, such as the deck view.
+        internal readonly List<(NGridCardHolder Holder, Label Badge, Control.GuiInputEventHandler Input)> Badges = [];
     }
     private static readonly ConditionalWeakTable<NSimpleCardSelectScreen, State> Screens = new();
     private static readonly Color BadgeColor = Color.FromHtml("fff6e2");
@@ -53,8 +55,25 @@ internal static class HandpickedUi
             if (GodotObject.IsInstanceValid(screen)) UpdateBadges(Grid(screen), screen, state);
         }
         tree.ProcessFrame += SyncBadges;
-        screen.TreeExiting += () => tree.ProcessFrame -= SyncBadges;
+        screen.TreeExiting += () =>
+        {
+            tree.ProcessFrame -= SyncBadges;
+            RemoveBadges(state);
+        };
         Refresh(screen, state);
+    }
+
+    // Pooled holders outlive this screen; strip our badges and input handlers before they are reused.
+    private static void RemoveBadges(State state)
+    {
+        foreach (var (holder, badge, input) in state.Badges)
+        {
+            if (GodotObject.IsInstanceValid(holder)) holder.GuiInput -= input;
+            if (!GodotObject.IsInstanceValid(badge)) continue;
+            badge.GetParent()?.RemoveChild(badge);
+            badge.QueueFree();
+        }
+        state.Badges.Clear();
     }
 
     private static NCardGrid Grid(NSimpleCardSelectScreen screen) =>
@@ -97,6 +116,10 @@ internal static class HandpickedUi
 
     internal static void UpdateBadges(NCardGrid grid, NSimpleCardSelectScreen screen, State state)
     {
+        // A holder scrolled out returns to the pool and may be shown by another grid (the deck view).
+        foreach (var (holder, badge, _) in state.Badges)
+            if (GodotObject.IsInstanceValid(badge) && (!GodotObject.IsInstanceValid(holder) || !grid.IsAncestorOf(holder)))
+                badge.Visible = false;
         foreach (var holder in grid.CurrentlyDisplayedCardHolders)
         {
             var badge = holder.GetNodeOrNull<Label>("HandpickedCopies") ?? CreateBadge(holder, screen, state);
@@ -111,12 +134,14 @@ internal static class HandpickedUi
     {
         // Controller remove button. Focused-control input runs before the game's hotkeys,
         // so accepting it keeps X from also triggering the potion shortcut on this screen.
-        holder.GuiInput += input =>
+        Control.GuiInputEventHandler remove = input =>
         {
-            if (!input.IsActionPressed(MegaInput.topPanel) || input.IsEcho() || !GodotObject.IsInstanceValid(screen)) return;
+            if (!input.IsActionPressed(MegaInput.topPanel) || input.IsEcho() || !GodotObject.IsInstanceValid(screen) ||
+                !Grid(screen).IsAncestorOf(holder)) return;
             Change(screen, state, holder.CardModel!, -1);
             holder.AcceptEvent();
         };
+        holder.GuiInput += remove;
         // Holders are centered on their card; place the count over the card's top-right corner.
         var half = NCard.defaultSize / 2;
         var badge = new Label
@@ -131,6 +156,7 @@ internal static class HandpickedUi
         badge.AddThemeColorOverride("font_outline_color", new Color(0, 0, 0));
         badge.AddThemeConstantOverride("outline_size", 14);
         holder.AddChild(badge);
+        state.Badges.Add((holder, badge, remove));
         return badge;
     }
 }

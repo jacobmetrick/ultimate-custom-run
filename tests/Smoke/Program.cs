@@ -988,6 +988,18 @@ internal static class Program
             filtered.DistinctBy(card => card.Id).Count() == filtered.Count &&
             filtered.Select(card => card.Rarity).SequenceEqual(filtered.Select(card => card.Rarity).Order()),
             "Candidates are unique Common, Uncommon and Rare cards in stable rarity order");
+        var pools = new CardPoolModel[]
+        {
+            ModelDb.CardPool<MegaCrit.Sts2.Core.Models.CardPools.ColorlessCardPool>(),
+            (CardPoolModel)RuntimeHelpers.GetUninitializedObject(typeof(MegaCrit.Sts2.Core.Models.CardPools.NecrobinderCardPool)),
+            (CardPoolModel)RuntimeHelpers.GetUninitializedObject(typeof(MegaCrit.Sts2.Core.Models.CardPools.RegentCardPool)),
+            (CardPoolModel)RuntimeHelpers.GetUninitializedObject(typeof(MegaCrit.Sts2.Core.Models.CardPools.DefectCardPool)),
+            (CardPoolModel)RuntimeHelpers.GetUninitializedObject(typeof(MegaCrit.Sts2.Core.Models.CardPools.SilentCardPool)),
+            (CardPoolModel)RuntimeHelpers.GetUninitializedObject(typeof(MegaCrit.Sts2.Core.Models.CardPools.IroncladCardPool)),
+        };
+        Check(pools.OrderBy(Handpicked.PoolRank).Select(pool => pool.GetType().Name).SequenceEqual(new[]
+            { "IroncladCardPool", "SilentCardPool", "DefectCardPool", "RegentCardPool", "NecrobinderCardPool", "ColorlessCardPool" }),
+            "Handpicked lists pools in compendium order: characters by tab, then Colorless");
     }
 
     private static void TestUltimateStarter()

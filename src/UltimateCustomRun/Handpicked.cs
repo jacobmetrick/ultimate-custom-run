@@ -11,6 +11,7 @@ using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Hooks;
 using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Models.CardPools;
 using MegaCrit.Sts2.Core.Models.Relics;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Runs;
@@ -20,7 +21,7 @@ namespace UltimateCustomRun;
 public sealed class Handpicked : ModifierModel
 {
     internal const string DisplayTitle = "Handpicked";
-    internal const string DisplayDescription = "Build your starting deck from [blue]10[/blue] cards of your choice, picked from every card your rewards can offer. Copies allowed.";
+    internal const string DisplayDescription = "Build your starting deck from [blue]10[/blue] cards of your choice, picked from every card your rewards can offer.";
     private const string PromptKey = "ULTIMATE_CUSTOM_RUN.handpickedPrompt";
     protected override string IconPath => ImageHelper.GetImagePath("packed/modifiers/sealed_deck.png");
     public override bool ClearsPlayerDeck => true;
@@ -107,18 +108,39 @@ public sealed class Handpicked : ModifierModel
         LocManager.Instance.GetTable("modifiers").MergeWith(new Dictionary<string, string>
         {
             [PromptKey] = russian
-                ? $"Выберите [blue]{count}[/blue] карт для колоды. Копии разрешены."
-                : $"Choose [blue]{count}[/blue] cards for your deck. Copies allowed."
+                ? $"Выберите [blue]{count}[/blue] карт для колоды."
+                : $"Choose [blue]{count}[/blue] cards for your deck."
         });
         return new LocString("modifiers", PromptKey);
     }
 
-    private static int CompareCards(CardModel left, CardModel right)
+    // Compendium order: its pool tabs, then rarity, type, cost and title within each pool.
+    internal static int CompareCards(CardModel left, CardModel right)
     {
-        var rarity = left.Rarity.CompareTo(right.Rarity);
-        return rarity != 0 ? rarity : string.Compare(left.Title, right.Title,
+        var result = PoolRank(left.Pool).CompareTo(PoolRank(right.Pool));
+        if (result == 0) result = left.Rarity.CompareTo(right.Rarity);
+        if (result == 0) result = left.Type.CompareTo(right.Type);
+        if (result == 0) result = left.EnergyCost.GetResolved().CompareTo(right.EnergyCost.GetResolved());
+        if (result == 0) result = string.Compare(left.Title, right.Title,
             LocManager.Instance.CultureInfo, System.Globalization.CompareOptions.None);
+        return result != 0 ? result : left.Id.CompareTo(right.Id);
     }
+
+    internal static int PoolRank(CardPoolModel pool)
+    {
+        var compendium = Array.FindIndex(CompendiumPools, type => type.IsInstanceOfType(pool));
+        if (compendium >= 0) return compendium;
+        // Modded characters follow the native characters; Colorless and other shared pools come last.
+        if (pool is ColorlessCardPool) return 1000;
+        var character = ModelDb.AllCharacterCardPools.Select(candidate => candidate.Id).ToList().IndexOf(pool.Id);
+        return character >= 0 ? CompendiumPools.Length + character : 1001;
+    }
+
+    private static readonly Type[] CompendiumPools =
+    [
+        typeof(IroncladCardPool), typeof(SilentCardPool), typeof(DefectCardPool),
+        typeof(RegentCardPool), typeof(NecrobinderCardPool)
+    ];
 }
 
 // Copy counts per candidate; synchronized as the candidate index repeated once per copy.
