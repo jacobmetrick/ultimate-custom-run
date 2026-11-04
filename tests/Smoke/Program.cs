@@ -968,10 +968,12 @@ internal static class Program
         var selection = new HandpickedSelection(3, 4);
         Check(selection.Add(2) && selection.Add(2) && selection.Add(0) && !selection.Add(1) && selection.IsComplete,
             "Selections take copies of one card and stop at the chosen count");
-        Check(selection.CopiesOf(2) == 2 && selection.ToIndexes().SequenceEqual(new[] { 0, 2, 2 }),
-            "Copies are synchronized as repeated candidate indexes");
+        Check(selection.CopiesOf(2) == 2 && selection.ToIndexes().SequenceEqual(new[] { 2, 2, 0 }),
+            "Copies are synchronized as candidate indexes in pick order");
         Check(selection.Remove(2) && !selection.Remove(1) && !selection.IsComplete && selection.Add(1) && selection.IsComplete,
             "Removing a copy reopens the selection and unpicked cards cannot be removed");
+        Check(selection.ToIndexes().SequenceEqual(new[] { 2, 0, 1 }),
+            "Removing a copy drops its latest pick and keeps the rest in pick order");
         HandpickedSelection.Validate([0, 0, 3], 3, 4);
         foreach (var invalid in new[] { new[] { 0, 1 }, new[] { 0, 1, 4 }, new[] { -1, 0, 1 } })
         {
