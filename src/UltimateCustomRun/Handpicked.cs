@@ -86,15 +86,23 @@ public sealed class Handpicked : ModifierModel
         }
         finally { await context.SignalPlayerChoiceEnded(); }
 
+        // The deck keeps cards in the order they were picked.
         var cards = new List<CardModel>(indexes.Count);
-        foreach (var group in indexes.GroupBy(index => index))
+        var created = new Dictionary<int, CardModel>();
+        foreach (var index in indexes)
         {
-            var id = candidates[group.Key].Id;
-            // Keep vanilla reward creation hooks; extra copies are clones of that card.
+            if (created.TryGetValue(index, out var first))
+            {
+                // Extra copies are clones of that card.
+                cards.Add(player.RunState.CloneCard(first));
+                continue;
+            }
+            var id = candidates[index].Id;
+            // Keep vanilla reward creation hooks.
             var card = CardFactory.CreateForReward(player, 1, RewardOptions(player).WithFilter(candidate => candidate.Id == id))
                 .First().Card;
+            created[index] = card;
             cards.Add(card);
-            for (var i = 1; i < group.Count(); i++) cards.Add(player.RunState.CloneCard(card));
         }
         CardCmd.PreviewCardPileAdd(await CardPileCmd.Add(cards, PileType.Deck), 1.2f, CardPreviewStyle.GridLayout);
         // Match Sealed Deck: Pandora's Box has no starter cards to transform.
@@ -143,12 +151,13 @@ public sealed class Handpicked : ModifierModel
     ];
 }
 
-// Copy counts per candidate; synchronized as the candidate index repeated once per copy.
+// Picks in the order they were made; synchronized as candidate indexes, one per copy.
 internal sealed class HandpickedSelection(int count, int candidateCount)
 {
     private readonly int[] _copies = new int[candidateCount];
+    private readonly List<int> _picks = [];
     internal int Count => count;
-    internal int Total { get; private set; }
+    internal int Total => _picks.Count;
     internal bool IsComplete => Total == count;
 
     internal int CopiesOf(int index) => _copies[index];
@@ -157,20 +166,20 @@ internal sealed class HandpickedSelection(int count, int candidateCount)
     {
         if (Total >= count || index < 0 || index >= _copies.Length) return false;
         _copies[index]++;
-        Total++;
+        _picks.Add(index);
         return true;
     }
 
+    // Removes the most recent pick of that card, so earlier picks keep their place.
     internal bool Remove(int index)
     {
         if (index < 0 || index >= _copies.Length || _copies[index] == 0) return false;
         _copies[index]--;
-        Total--;
+        _picks.RemoveAt(_picks.LastIndexOf(index));
         return true;
     }
 
-    internal List<int> ToIndexes() =>
-        Enumerable.Range(0, _copies.Length).SelectMany(index => Enumerable.Repeat(index, _copies[index])).ToList();
+    internal List<int> ToIndexes() => [.. _picks];
 
     internal static void Validate(IReadOnlyCollection<int> indexes, int count, int candidateCount)
     {
