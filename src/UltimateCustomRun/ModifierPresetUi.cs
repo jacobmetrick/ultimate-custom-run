@@ -51,8 +51,9 @@ internal static class ModifierPresetUi
         var randomizeButton = screen.GetNode<NCustomRunRandomizeButton>("%CustomRunRandomizeButton");
         var row = randomizeButton.GetParent<HBoxContainer>();
         var rowIndex = randomizeButton.GetIndex();
-        row.RemoveChild(randomizeButton);
-        randomizeButton.QueueFree();
+        // Hide rather than free: the screen still disables and enables its _randomizeButton on embark and
+        // unready, and a freed node throws there, which made the first press of the start button fail.
+        randomizeButton.Visible = false;
         row.AddThemeConstantOverride("separation", 20);
 
         var modifierList = (NCustomRunModifiersList)AccessTools.Field(typeof(NCustomRunScreen), "_modifiersList")!.GetValue(screen)!;
