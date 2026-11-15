@@ -33,6 +33,7 @@ internal static class ModifierValues
         Draft => new(5, 20, 5, 10, "cards"),
         SealedDeck => new(5, GetSealedPool(modifier) - 5, 5, 10, "cards"),
         Insanity => new(5, 60, 5, 30, "cards"),
+        Handpicked => new(5, 60, 5, 10, "cards"),
         Hoarder => new(1, 5, 1, 2, "extra copies"),
         Midas => new(150, 300, 5, 200, "% gold"),
         DoubleTrouble => new(2, 3, 1, 2, "bosses"),
