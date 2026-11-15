@@ -176,6 +176,7 @@ internal static class ModifierValueUi
         }
         CustomRunParametersUi.Refresh(list);
         CoopHandicapUi.Refresh(list);
+        StartOrderUi.Refresh(list);
         ModifierGroupsUi.Refresh(list);
     }
 
